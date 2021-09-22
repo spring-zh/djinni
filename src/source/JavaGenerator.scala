@@ -279,6 +279,12 @@ class JavaGenerator(spec: Spec) extends Generator(spec) {
       return false
     }
 
+    if (r.derivingTypes.contains(DerivingType.Json)){
+      refs.java  += "org.json.JSONObject"
+      refs.java  += "org.json.JSONArray"
+      refs.java  += "org.json.JSONException"
+    }
+
     if (spec.javaImplementAndroidOsParcelable && r.derivingTypes.contains(DerivingType.AndroidParcelable)
       && recordContainsSets(r) && !recordContainsLists(r)) {
       // If the record is parcelable, doesn't contain any List but it contains a Set,
@@ -325,6 +331,67 @@ class JavaGenerator(spec: Spec) extends Generator(spec) {
           }
         }
         w.wl("}")
+
+        if (r.derivingTypes.contains(DerivingType.Json)) {
+          w.wl
+          w.wl("// consturct from json")
+          w.w(s"public $self(JSONObject json) throws JSONException").braced {
+            // w.wl(s"fromJson(json);");
+            for (f <- r.fields) { 
+              var key = idJava.local(f.ident);
+              var field = idJava.field(f.ident);
+
+              f.ty.resolved.base match {
+                  case MList => {
+                    w.wl(s"""if (json.has("${key}")) {""").nested{
+                      val collectionTypeName = marshal.typename(f.ty).replaceFirst("ArrayList<(.*)>", "$1")
+                      w.wl(s"this.${field} = new ArrayList<>();") 
+                      w.wl(s"""JSONArray ${key} = (JSONArray) json.get("${key}");""") 
+                      w.w(s"for (int i = 0 ; i < ${key}.length() ; ++i)").braced{
+                        f.ty.resolved.args.head.base match {
+                          case df: MDef => df.defType match {
+                            case DRecord => {
+                              var recordType = idJava.ty(df.name);
+                              w.wl(s"this.${field}.add(new ${recordType}((JSONObject) ${key}.get(i)));")
+                            }
+                            case _ => throw new AssertionError("Unreachable")
+                          }
+                          // case MString => w.wl(s"this.${field}.add((String)${key}.get(i));")
+                          case _ => w.wl(s"this.${field}.add((${collectionTypeName}) ${key}.get(i));")
+                        }
+                      }
+                    }
+                    w.wl(s"} else {").nested{
+                      w.wl(s"this.${field} = null;")
+                    }
+                    w.wl(s"}")
+                  }
+                  case t: MPrimitive => t.jName match {
+                    case "byte" | "short" | "int" => w.wl(s"""this.${field} = json.getInt("${key}");""")
+                    case "long" => w.wl(s"""this.${field} = json.getLong("${key}");""")
+                    case "float" |  "double" => w.wl(s"""this.${field} = json.getDouble("${key}");""")
+                    case "boolean" => w.wl(s"""this.${field} = json.getBoolean("${key}");""")
+                    case _ => throw new AssertionError("Unreachable")
+                  }
+                  case MString => w.wl(s"""this.${field} = json.getString("${key}");""")
+                  case df: MDef => df.defType match {
+                    case DRecord => {
+                      w.wl(s"""if (json.has("${key}")) {""").nested{
+                        var recordType = idJava.ty(df.name);
+                        w.wl(s"""this.${field} = new ${recordType}((JSONObject) json.get("${key}"));""")
+                      }
+                      w.wl(s"} else ").nested{
+                        w.wl(s"this.${field} = null;")
+                      }
+                    }
+                    case DEnum => w.wl(s"""this.${field} = json.getInt("${key}");""")
+                    case _ => throw new AssertionError("Unreachable")
+                  }
+                  case _ => throw new AssertionError("Unreachable")
+                }
+            }
+          }
+        }
 
         // Accessors
         for (f <- r.fields) {
@@ -414,6 +481,50 @@ class JavaGenerator(spec: Spec) extends Generator(spec) {
             w.wl(s"return hashCode;")
           }
 
+        }
+
+        w.wl
+        if (r.derivingTypes.contains(DerivingType.Json)) {
+
+          w.w("public JSONObject toJson() throws JSONException").braced {
+            w.wl(s"JSONObject root = new JSONObject();")
+            for (f <- r.fields) {
+              var key = idJava.local(f.ident);
+              var field = idJava.field(f.ident);
+              
+              f.ty.resolved.base match {
+                  case MList => w.w(s"if (this.${field} != null)").braced{
+                    w.wl(s"JSONArray ${key} = new JSONArray();") 
+                    w.w(s"for (Object o : this.${field})").braced{
+                      f.ty.resolved.args.head.base match {
+                        case df: MDef => df.defType match {
+                          case DRecord => {
+                            var recordType = idJava.ty(df.name);
+                            w.wl(s"${key}.put((($recordType)o).toJson());")
+                          }
+                          case _ => throw new AssertionError("Unreachable")
+                        }
+                        case _ => w.wl(s"${key}.put(o);")
+                      }
+                    }
+                    w.wl(s"""root.put("${key}", ${key});""")
+                  }
+                  case t: MPrimitive => w.wl(s"""root.put("${key}", this.${field});""")
+                  case MString => w.w(s"if (this.${field} != null)").braced{
+                    w.wl(s"""root.put("${key}", this.${field});""")
+                  }
+                  case df: MDef => df.defType match {
+                    case DRecord => w.w(s"if (this.${field} != null)").braced{
+                      w.wl(s"""root.put("${key}", this.${field}.toJson());""")
+                    }
+                    case DEnum => w.wl(s"""root.put("${key}", this.${field});""")
+                    case _ => throw new AssertionError("Unreachable")
+                  }
+                  case _ => throw new AssertionError("Unreachable")
+                }
+            }
+            w.wl(s"return root;")
+          }
         }
 
         w.wl
