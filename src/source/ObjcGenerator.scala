@@ -157,6 +157,10 @@ class ObjcGenerator(spec: Spec) extends BaseObjcGenerator(spec) {
       refs.header.add(s"@class $noBaseSelf;")
     }
 
+    if (r.derivingTypes.contains(DerivingType.Json)){
+      refs.header.add("#import <Foundation/NSDictionary.h>")
+    }
+
     def checkMutable(tm: MExpr): Boolean = tm.base match {
       case MOptional => checkMutable(tm.args.head)
       case MString => true
@@ -188,6 +192,11 @@ class ObjcGenerator(spec: Spec) extends BaseObjcGenerator(spec) {
         writeDoc(w, c.doc)
         writeObjcConstMethDecl(c, w)
       }
+
+      if (r.derivingTypes.contains(DerivingType.Json)){
+        w.wl("- (nonnull instancetype)initWithJson:(nonnull NSDictionary*)json;")
+        w.wl("- (nonnull NSDictionary*)toJson;")
+    }
 
       for (f <- r.fields) {
         w.wl
@@ -332,6 +341,126 @@ class ObjcGenerator(spec: Spec) extends BaseObjcGenerator(spec) {
         }
         w.wl
       }
+
+      if (r.derivingTypes.contains(DerivingType.Json)) {
+        w.wl("// consturct with json")
+        w.w("- (nonnull instancetype)initWithJson:(nonnull NSDictionary*)json").braced {
+
+            w.w("if (self = [super init])").braced {
+              for (f <- r.fields) { 
+              var key = idObjc.local(f.ident);
+              var field = idObjc.field(f.ident);
+
+              f.ty.resolved.base match {
+                  case MList => {
+                    w.wl(s"""NSMutableArray* ${key} = [json valueForKey:@"${key}"];""")
+                    w.wl(s"if (${key} != nil) {").nested{
+                      // val collectionTypeName = marshal.typename(f.ty).replaceFirst("NSArray<(.*)>", "$1")
+                      w.wl(s"_${field} = [NSMutableArray new];")  
+                      w.w(s"for (id obj : ${key})").braced{
+                        f.ty.resolved.args.head.base match {
+                          case df: MDef => df.defType match {
+                            case DRecord => {
+                              var recordType = idObjc.ty(df.name);
+                              w.wl(s"[((NSMutableArray*)_${field}) addObject:[[${recordType} alloc] initWithJson:(NSDictionary*)obj]];")
+                            }
+                            case _ => throw new AssertionError("Unreachable")
+                          }
+                          case MString => w.wl(s"[((NSMutableArray*)_${field}) addObject:[obj copy]];")
+                          case _ => w.wl(s"[((NSMutableArray*)_${field}) addObject:obj];")
+                        }
+                      }
+                    }
+                    w.wl(s"} else {").nested{
+                      w.wl(s"_${field} = nil;")
+                    }
+                    w.wl(s"}")
+                  }
+                  case t: MPrimitive => {
+                    w.wl(s"""NSNumber* ${key} = [json valueForKey:@"${key}"];""")
+                    w.w(s"if (${key} != nil)").braced{
+                      t.jName match {
+                      case "byte" | "short" | "int" => w.wl(s"_${field} = [${key} intValue];")
+                      case "long" => w.wl(s"_${field} = [${key} longValue];")
+                      case "float" => w.wl(s"_${field} = [${key} floatValue];")
+                      case "double" => w.wl(s"_${field} = [${key} doubleValue];")
+                      case "boolean" => w.wl(s"_${field} = [${key} boolValue];")
+                      case _ => throw new AssertionError("Unreachable")
+                      }
+                    }
+                  }
+                  case MString => {
+                    w.wl(s"""NSString* ${key} = [json valueForKey:@"${key}"];""")
+                    w.wl(s"_${field} = [${key} copy];")
+                  }
+                  case df: MDef => df.defType match {
+                    case DRecord => {
+                      w.wl(s"""NSDictionary* ${key} = [json valueForKey:@"${key}"];""")
+                      w.wl(s"""if (${key} != nil) {""").nested{
+                        var recordType = idObjc.ty(df.name);
+                        w.wl(s"_${field} = [[${recordType} alloc] initWithJson:${key}];")
+                      }
+                      w.wl(s"} else ").nested{
+                        w.wl(s"_${field} = nil;")
+                      }
+                    }
+                    case DEnum => {
+                      w.wl(s"""NSNumber* ${key} = [json valueForKey:@"${key}"];""")
+                      w.w(s"if (${key} != nil)").braced{
+                        w.wl(s"_${field} = [${key} intValue];")
+                      }
+                    } 
+                    case _ => throw new AssertionError("Unreachable")
+                  }
+                  case _ => throw new AssertionError("Unreachable")
+                }
+              }
+            }
+            w.wl(s"return self;")
+        }
+        w.wl("// serialize to json")
+        w.w("- (nonnull NSDictionary*) toJson").braced {
+          w.wl(s"NSDictionary* root = [NSMutableDictionary new];")
+          for (f <- r.fields) {
+              var key = idObjc.local(f.ident);
+              var field = idObjc.field(f.ident);
+              
+              f.ty.resolved.base match {
+                  case MList => w.w(s"if (self.${field} != nil)").braced{
+                    w.wl(s"NSMutableArray *${key} = [NSMutableArray new];") 
+                    w.w(s"for (id obj in self.${field})").braced{
+                      f.ty.resolved.args.head.base match {
+                        case df: MDef => df.defType match {
+                          case DRecord => {
+                            var recordType = idObjc.ty(df.name);
+                            w.wl(s"[${key} addObject:[(($recordType*)obj) toJson]];")
+                          }
+                          case _ => throw new AssertionError("Unreachable")
+                        }
+                        case _ => w.wl(s"[${key} addObject:obj];")
+                      }
+                    }
+                    w.wl(s"""[root setValue:${key} forKey:@"${key}"];""")
+                  }
+                  case t: MPrimitive => w.wl(s"""[root setValue:@(self.${field}) forKey:@"${key}"];""")
+                  case MString => w.w(s"if (self.${field} != nil)").braced{
+                    w.wl(s"""[root setValue:self.${field} forKey:@"${key}"];""")
+                  }
+                  case df: MDef => df.defType match {
+                    case DRecord => w.w(s"if (self.${field} != nil)").braced{
+                      var recordType = idObjc.ty(df.name);
+                      w.wl(s"""[root setValue:[(($recordType*)self.${field}) toJson] forKey:@"${key}"];""")
+                    }
+                    case DEnum => w.wl(s"""[root setValue:self.${field} forKey:@"${key}"];""")
+                    case _ => throw new AssertionError("Unreachable")
+                  }
+                  case _ => throw new AssertionError("Unreachable")
+                }
+            }
+            w.wl(s"return root;")
+        }
+      }
+      w.wl
 
       def generatePrimitiveOrder(ident: Ident, w: IndentWriter): Unit = {
         w.wl(s"if (self.${idObjc.field(ident)} < other.${idObjc.field(ident)}) {").nested {
