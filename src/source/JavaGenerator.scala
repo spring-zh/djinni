@@ -115,11 +115,45 @@ class JavaGenerator(spec: Spec) extends Generator(spec) {
       writeDoc(w, doc)
       javaAnnotationHeader.foreach(w.wl)
       w.w(s"${javaClassAccessModifierString}enum ${marshal.typename(ident, e)}").braced {
-        for (o <- normalEnumOptions(e)) {
-          writeDoc(w, o.doc)
-          w.wl(idJava.enum(o.ident) + ",")
+        if(e.flags) {
+          for (o <- normalEnumOptions(e)) {
+            writeDoc(w, o.doc)
+            w.wl(idJava.enum(o.ident) + ",")
+          }
+        } else {
+          var index = -1
+          for (o <- normalEnumOptions(e)) {
+            val value = o.value.toString
+            o.value match {
+              case None => index += 1
+              case Some(s) => index = s.toString.toInt
+            }
+            writeDoc(w, o.doc)
+            w.wl(idJava.enum(o.ident) + s"($index),")
+          }
+          w.wl(";")
+          
+          w.wl
+          w.wl("private final int value;")
+
+          w.wl
+          w.w(s"${marshal.typename(ident, e)}(int value)").braced {
+            w.wl("this.value = value;")
+          }
+          w.wl
+          w.w(s"static ${marshal.typename(ident, e)} index(int value)").braced {
+            w.w(s"for (${marshal.typename(ident, e)} item : Enumcls.values())").braced {
+              w.wl("if (item.value == value)").nested {
+                w.wl("return item;")
+              }
+            }
+            w.wl("return null;")
+          }
+
+          w.w("int getValue()").braced {
+            w.wl("return this.value;")
+          }
         }
-        w.wl(";")
       }
     })
   }

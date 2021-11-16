@@ -407,8 +407,14 @@ abstract class Generator(spec: Spec)
   def writeEnumOptions(w: IndentWriter, e: Enum, ident: IdentConverter) {
     var shift = 0
     for (o <- normalEnumOptions(e)) {
+      val value = o.value.toString
       writeDoc(w, o.doc)
-      w.wl(ident(o.ident.name) + (if(e.flags) s" = 1 << $shift" else "") + ",")
+      o.value match {
+        case None =>
+        w.wl(ident(o.ident.name) + (if(e.flags) s" = 1 << $shift" else s"") + ",")
+        case Some(s) => 
+        w.wl(ident(o.ident.name) + (if(e.flags) s" = 1 << $shift" else s" = $s") + ",")
+      }
       shift += 1
     }
   }

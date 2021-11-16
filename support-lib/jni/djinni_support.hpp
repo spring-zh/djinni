@@ -539,6 +539,8 @@ public:
      */
     jint ordinal(JNIEnv * env, jobject obj) const;
 
+    jint getValue(JNIEnv * env, jobject obj) const;
+
     /*
      * Create a Java value of the wrapped class with the given value.
      */
@@ -551,7 +553,9 @@ protected:
 private:
     const GlobalRef<jclass> m_clazz;
     const jmethodID m_staticmethValues;
+    const jmethodID m_staticmethIndex;
     const jmethodID m_methOrdinal;
+    const jmethodID m_methGetValue;
 };
 
 class JniFlags : private JniEnum {
