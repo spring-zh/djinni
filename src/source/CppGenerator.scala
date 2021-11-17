@@ -119,7 +119,7 @@ class CppGenerator(spec: Spec) extends Generator(spec) {
       case p: MPrimitive if c.ty.resolved.base != MOptional => true
       case _ => false
     }
-    canConstexpr
+    canConstexpr && spec.cppUseConstExpr
   }
 
   def generateHppConstants(w: IndentWriter, consts: Seq[Const]) = {
@@ -127,7 +127,7 @@ class CppGenerator(spec: Spec) extends Generator(spec) {
       // set value in header if can constexpr (only primitives)
       var constexpr = shouldConstexpr(c)
       var constValue = ";"
-      if (constexpr) {
+      // if (constexpr) {
         constValue = c.value match {
         case l: Long => " = " + l.toString + ";"
         case d: Double if marshal.fieldType(c.ty) == "float" => " = " + d.toString + "f;"
@@ -135,13 +135,13 @@ class CppGenerator(spec: Spec) extends Generator(spec) {
         case b: Boolean => if (b) " = true;" else " = false;"
         case _ => ";"
         }
-      }
-      val constFieldType = if (constexpr) s"constexpr ${marshal.fieldType(c.ty)}" else s"${marshal.fieldType(c.ty)} const"
+      // }
+      val constFieldType = if (constexpr) s"constexpr ${marshal.fieldType(c.ty)}" else s"const ${marshal.fieldType(c.ty)}"
 
       // Write code to the header file
-      w.wl
       writeDoc(w, c.doc)
       w.wl(s"static ${constFieldType} ${idCpp.const(c.ident)}${constValue}")
+      w.wl
     }
   }
 
@@ -261,9 +261,9 @@ class CppGenerator(spec: Spec) extends Generator(spec) {
 
     writeHppFile(cppName, origin, refs.hpp, refs.hppFwds, writeCppPrototype)
 
-    if (r.consts.nonEmpty || r.derivingTypes.contains(DerivingType.Eq) || r.derivingTypes.contains(DerivingType.Ord)) {
+    if (/*r.consts.nonEmpty ||*/ r.derivingTypes.contains(DerivingType.Eq) || r.derivingTypes.contains(DerivingType.Ord)) {
       writeCppFile(cppName, origin, refs.cpp, w => {
-        generateCppConstants(w, r.consts, actualSelf)
+        // generateCppConstants(w, r.consts, actualSelf)
 
         if (r.derivingTypes.contains(DerivingType.Eq)) {
           w.wl
