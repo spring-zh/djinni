@@ -100,6 +100,7 @@ class JavaMarshal(spec: Spec) extends Marshal(spec) {
           val base = o match {
             case p: MPrimitive => if (needRef) p.jBoxed else p.jName
             case MString => "String"
+            case MObject => "Object"
             case MDate => "Date"
             case MBinary => "byte[]"
             case MOptional => throw new AssertionError("optional should have been special cased")

@@ -406,6 +406,7 @@ class JNIGenerator(spec: Spec) extends Generator(spec) {
   def toJniCall(m: MExpr, f: String => String, needRef: Boolean): String = m.base match {
     case p: MPrimitive => f(if (needRef) "Object" else IdentStyle.camelUpper(p.jName))
     case MString => "(jstring)" + f("Object")
+    case MObject => f("Object")
     case MOptional => toJniCall(m.args.head, f, true)
     case MBinary => "(jbyteArray)" + f("Object")
     case _ => f("Object")

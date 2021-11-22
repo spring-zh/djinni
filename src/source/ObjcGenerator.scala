@@ -164,6 +164,7 @@ class ObjcGenerator(spec: Spec) extends BaseObjcGenerator(spec) {
     def checkMutable(tm: MExpr): Boolean = tm.base match {
       case MOptional => checkMutable(tm.args.head)
       case MString => true
+      case MObject => false
       case MList => true
       case MSet => true
       case MMap => true
@@ -286,6 +287,7 @@ class ObjcGenerator(spec: Spec) extends BaseObjcGenerator(spec) {
                       w.w(s"(self.${idObjc.field(f.ident)} != nil && [self.${idObjc.field(f.ident)} isEqual:typedOther.${idObjc.field(f.ident)}]))")
                   }
                 case MString => w.w(s"[self.${idObjc.field(f.ident)} isEqualToString:typedOther.${idObjc.field(f.ident)}]")
+                case MObject => w.w(s"self.${idObjc.field(f.ident)} == typedOther.${idObjc.field(f.ident)}")
                 case MDate => w.w(s"[self.${idObjc.field(f.ident)} isEqualToDate:typedOther.${idObjc.field(f.ident)}]")
                 case t: MPrimitive => w.w(s"self.${idObjc.field(f.ident)} == typedOther.${idObjc.field(f.ident)}")
                 case df: MDef => df.defType match {
@@ -367,6 +369,7 @@ class ObjcGenerator(spec: Spec) extends BaseObjcGenerator(spec) {
                             case _ => throw new AssertionError("Unreachable")
                           }
                           case MString => w.wl(s"[((NSMutableArray*)_${field}) addObject:[obj copy]];")
+                          case MObject => throw new AssertionError("Unreachable")
                           case _ => w.wl(s"[((NSMutableArray*)_${field}) addObject:obj];")
                         }
                       }
@@ -393,6 +396,7 @@ class ObjcGenerator(spec: Spec) extends BaseObjcGenerator(spec) {
                     w.wl(s"""NSString* ${key} = [json valueForKey:@"${key}"];""")
                     w.wl(s"_${field} = [${key} copy];")
                   }
+                  case MObject => throw new AssertionError("Unreachable")
                   case df: MDef => df.defType match {
                     case DRecord => {
                       w.wl(s"""NSDictionary* ${key} = [json valueForKey:@"${key}"];""")
@@ -446,6 +450,7 @@ class ObjcGenerator(spec: Spec) extends BaseObjcGenerator(spec) {
                   case MString => w.w(s"if (self.${field} != nil)").braced{
                     w.wl(s"""[root setValue:self.${field} forKey:@"${key}"];""")
                   }
+                  case MObject => throw new AssertionError("Unreachable")
                   case df: MDef => df.defType match {
                     case DRecord => w.w(s"if (self.${field} != nil)").braced{
                       var recordType = idObjc.ty(df.name);
@@ -481,6 +486,7 @@ class ObjcGenerator(spec: Spec) extends BaseObjcGenerator(spec) {
           for (f <- r.fields) {
             f.ty.resolved.base match {
               case MString | MDate => w.wl(s"tempResult = [self.${idObjc.field(f.ident)} compare:other.${idObjc.field(f.ident)}];")
+              case MObject => throw new AssertionError("Unreachable")
               case t: MPrimitive => generatePrimitiveOrder(f.ident, w)
               case df: MDef => df.defType match {
                 case DRecord => w.wl(s"tempResult = [self.${idObjc.field(f.ident)} compare:other.${idObjc.field(f.ident)}];")

@@ -46,6 +46,7 @@ class JNIMarshal(spec: Spec) extends Marshal(spec) {
   def toJniType(m: MExpr, needRef: Boolean): String = m.base match {
     case p: MPrimitive => if (needRef) "jobject" else p.jniName
     case MString => "jstring"
+    case MObject => "jobject"
     case MOptional => toJniType(m.args.head, true)
     case MBinary => "jbyteArray"
     case tp: MParam => helperClass(tp.name) + "::JniType"
@@ -63,6 +64,7 @@ class JNIMarshal(spec: Spec) extends Marshal(spec) {
     case o: MOpaque => o match {
       case p: MPrimitive => p.jSig
       case MString => "Ljava/lang/String;"
+      case MObject => "Ljava/lang/Object;"
       case MDate => "Ljava/util/Date;"
       case MBinary => "[B"
       case MOptional =>  tm.args.head.base match {
@@ -102,6 +104,7 @@ class JNIMarshal(spec: Spec) extends Marshal(spec) {
       case MOptional => "Optional"
       case MBinary => "Binary"
       case MString => if (spec.cppUseWideStrings) "WString" else "String"
+      case MObject => "Object"
       case MDate => "Date"
       case MList => "List"
       case MSet => "Set"
