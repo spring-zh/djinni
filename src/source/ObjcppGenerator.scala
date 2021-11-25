@@ -329,6 +329,7 @@ class ObjcppGenerator(spec: Spec) extends BaseObjcGenerator(spec) {
     def checkMutable(tm: MExpr): Boolean = tm.base match {
       case MOptional => checkMutable(tm.args.head)
       case MString => true
+      case MObject => false
       case MBinary => true
       case _ => false
     }

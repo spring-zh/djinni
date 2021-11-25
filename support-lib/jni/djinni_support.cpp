@@ -256,7 +256,9 @@ jfieldID jniGetFieldID(jclass clazz, const char * name, const char * sig) {
 JniEnum::JniEnum(const std::string & name)
     : m_clazz { jniFindClass(name.c_str()) },
       m_staticmethValues { jniGetStaticMethodID(m_clazz.get(), "values", ("()[L" + name + ";").c_str()) },
-      m_methOrdinal { jniGetMethodID(m_clazz.get(), "ordinal", "()I") }
+      m_staticmethIndex { jniGetStaticMethodID(m_clazz.get(), "index", ("()L" + name + ";").c_str()) },
+      m_methOrdinal { jniGetMethodID(m_clazz.get(), "ordinal", "()I") },
+      m_methGetValue { jniGetMethodID(m_clazz.get(), "getValue", "()I") }
     {}
 
 jint JniEnum::ordinal(JNIEnv * env, jobject obj) const {
@@ -266,14 +268,23 @@ jint JniEnum::ordinal(JNIEnv * env, jobject obj) const {
     return res;
 }
 
+jint JniEnum::getValue(JNIEnv * env, jobject obj) const {
+    DJINNI_ASSERT(obj, env);
+    const jint res = env->CallIntMethod(obj, m_methGetValue);
+    jniExceptionCheck(env);
+    return res;
+}
+
 LocalRef<jobject> JniEnum::create(JNIEnv * env, jint value) const {
-    LocalRef<jobject> values(env, env->CallStaticObjectMethod(m_clazz.get(), m_staticmethValues));
+    // LocalRef<jobject> values(env, env->CallStaticObjectMethod(m_clazz.get(), m_staticmethValues));
+    // jniExceptionCheck(env);
+    // DJINNI_ASSERT(values, env);
+    // LocalRef<jobject> result(env,
+    //                          env->GetObjectArrayElement(static_cast<jobjectArray>(values.get()),
+    //                                                     value));
+    LocalRef<jobject> result(env, env->CallStaticObjectMethod(m_clazz.get(), m_staticmethIndex, value));
     jniExceptionCheck(env);
     DJINNI_ASSERT(values, env);
-    LocalRef<jobject> result(env,
-                             env->GetObjectArrayElement(static_cast<jobjectArray>(values.get()),
-                                                        value));
-    jniExceptionCheck(env);
     return result;
 }
 

@@ -68,14 +68,14 @@ object Enum {
     val NoFlags, AllFlags = Value
   }
   import SpecialFlag._
-  case class Option(ident: Ident, doc: Doc, specialFlag: scala.Option[SpecialFlag])
+  case class Option(ident: Ident, doc: Doc, value: Any, specialFlag: scala.Option[SpecialFlag])
 }
 
 case class Record(ext: Ext, fields: Seq[Field], consts: Seq[Const], derivingTypes: Set[DerivingType]) extends TypeDef
 object Record {
   object DerivingType extends Enumeration {
     type DerivingType = Value
-    val Eq, Ord, AndroidParcelable = Value
+    val Eq, Ord, Json, AndroidParcelable = Value
   }
 }
 

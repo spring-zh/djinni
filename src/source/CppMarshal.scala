@@ -53,6 +53,7 @@ class CppMarshal(spec: Spec) extends Marshal(spec) {
       case _ => List()
     }
     case MString => List(ImportRef("<string>"))
+    case MObject => List(ImportRef("<cstdint>"))
     case MDate => List(ImportRef("<chrono>"))
     case MBinary => List(ImportRef("<vector>"), ImportRef("<cstdint>"))
     case MOptional => List(ImportRef(spec.cppOptionalHeader))
@@ -74,7 +75,8 @@ class CppMarshal(spec: Spec) extends Marshal(spec) {
         if (d.name != exclude) {
           if (forwardDeclareOnly) {
             val underlyingType = if(e.flags) " : unsigned" else ""
-            List(DeclRef(s"enum class ${typename(d.name, d.body)}${underlyingType};", Some(spec.cppNamespace)))
+            var emumTag = if(spec.cppUseEnumClass) "enum class" else "enum"
+            List(DeclRef(s"$emumTag ${typename(d.name, d.body)}${underlyingType};", Some(spec.cppNamespace)))
           } else {
             List(ImportRef(include(d.name)))
           }
@@ -150,6 +152,7 @@ class CppMarshal(spec: Spec) extends Marshal(spec) {
     def base(m: Meta): String = m match {
       case p: MPrimitive => p.cName
       case MString => if (spec.cppUseWideStrings) "std::wstring" else "std::string"
+      case MObject => "void*"
       case MDate => "std::chrono::system_clock::time_point"
       case MBinary => "std::vector<uint8_t>"
       case MOptional => spec.cppOptionalTemplate
@@ -216,6 +219,7 @@ class CppMarshal(spec: Spec) extends Marshal(spec) {
       case DEnum => true
       case DRecord => e.cpp.byValue
     }
+    case MObject => true
     case MOptional => byValue(tm.args.head)
     case _ => false
   }

@@ -123,6 +123,7 @@ private object IdlParser extends RegexParsers {
     _.map(ident => ident.name match {
       case "eq" => Record.DerivingType.Eq
       case "ord" => Record.DerivingType.Ord
+      case "json" => Record.DerivingType.Json
       case "parcelable" => Record.DerivingType.AndroidParcelable
       case _ => return err( s"""Unrecognized deriving type "${ident.name}"""")
     }).toSet
@@ -140,13 +141,14 @@ private object IdlParser extends RegexParsers {
     case items => Enum(items, true)
   }
 
-  def enumOption: Parser[Enum.Option] = doc ~ ident ^^ {
-    case doc~ident => Enum.Option(ident, doc, None)
+  def enumOption: Parser[Enum.Option] = doc ~ ident ~ opt("=" ~> value) ^^ {
+    case doc~ident~None => Enum.Option(ident, doc, None, None)
+    case doc~ident~value => Enum.Option(ident, doc, value, None)
   }
   def flagsOption: Parser[Enum.Option] = doc ~ ident ~ opt("=" ~> (flagsAll | flagsNone)) ^^ {
-    case doc~ident~None => Enum.Option(ident, doc, None)
-    case doc~ident~Some("all") => Enum.Option(ident, doc, Some(Enum.SpecialFlag.AllFlags))
-    case doc~ident~Some("none") => Enum.Option(ident, doc, Some(Enum.SpecialFlag.NoFlags))
+    case doc~ident~None => Enum.Option(ident, doc, None, None)
+    case doc~ident~Some("all") => Enum.Option(ident, doc, None, Some(Enum.SpecialFlag.AllFlags))
+    case doc~ident~Some("none") => Enum.Option(ident, doc, None, Some(Enum.SpecialFlag.NoFlags))
   }
 
   def interfaceHeader = "interface" ~> extInterface

@@ -176,6 +176,23 @@ struct WString {
     }
 };
 
+struct Object {
+    using CppType = void*;
+    using ObjcType = id;
+
+    using Boxed = Object;
+
+    static CppType toCpp(ObjcType obj) {
+        assert(obj);
+        return (__bridge void *)obj;
+    }
+
+    static ObjcType fromCpp(const CppType p) {
+        assert(p);
+        return (__bridge id)p;
+    }
+};
+
 struct Date {
     using CppType = std::chrono::system_clock::time_point;
     using ObjcType = NSDate*;

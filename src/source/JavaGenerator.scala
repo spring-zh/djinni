@@ -115,11 +115,45 @@ class JavaGenerator(spec: Spec) extends Generator(spec) {
       writeDoc(w, doc)
       javaAnnotationHeader.foreach(w.wl)
       w.w(s"${javaClassAccessModifierString}enum ${marshal.typename(ident, e)}").braced {
-        for (o <- normalEnumOptions(e)) {
-          writeDoc(w, o.doc)
-          w.wl(idJava.enum(o.ident) + ",")
+        if(e.flags) {
+          for (o <- normalEnumOptions(e)) {
+            writeDoc(w, o.doc)
+            w.wl(idJava.enum(o.ident) + ",")
+          }
+        } else {
+          var index = -1
+          for (o <- normalEnumOptions(e)) {
+            val value = o.value.toString
+            o.value match {
+              case None => index += 1
+              case Some(s) => index = s.toString.toInt
+            }
+            writeDoc(w, o.doc)
+            w.wl(idJava.enum(o.ident) + s"($index),")
+          }
+          w.wl(";")
+          
+          w.wl
+          w.wl("private final int value;")
+
+          w.wl
+          w.w(s"${marshal.typename(ident, e)}(int value)").braced {
+            w.wl("this.value = value;")
+          }
+          w.wl
+          w.w(s"static ${marshal.typename(ident, e)} index(int value)").braced {
+            w.w(s"for (${marshal.typename(ident, e)} item : Enumcls.values())").braced {
+              w.wl("if (item.value == value)").nested {
+                w.wl("return item;")
+              }
+            }
+            w.wl("return null;")
+          }
+
+          w.w("int getValue()").braced {
+            w.wl("return this.value;")
+          }
         }
-        w.wl(";")
       }
     })
   }
@@ -279,6 +313,12 @@ class JavaGenerator(spec: Spec) extends Generator(spec) {
       return false
     }
 
+    if (r.derivingTypes.contains(DerivingType.Json)){
+      refs.java  += "org.json.JSONObject"
+      refs.java  += "org.json.JSONArray"
+      refs.java  += "org.json.JSONException"
+    }
+
     if (spec.javaImplementAndroidOsParcelable && r.derivingTypes.contains(DerivingType.AndroidParcelable)
       && recordContainsSets(r) && !recordContainsLists(r)) {
       // If the record is parcelable, doesn't contain any List but it contains a Set,
@@ -326,6 +366,68 @@ class JavaGenerator(spec: Spec) extends Generator(spec) {
         }
         w.wl("}")
 
+        if (r.derivingTypes.contains(DerivingType.Json)) {
+          w.wl
+          w.wl("// consturct from json")
+          w.w(s"public $self(JSONObject json) throws JSONException").braced {
+            // w.wl(s"fromJson(json);");
+            for (f <- r.fields) { 
+              var key = idJava.local(f.ident);
+              var field = idJava.field(f.ident);
+
+              f.ty.resolved.base match {
+                  case MList => {
+                    w.wl(s"""if (json.has("${key}")) {""").nested{
+                      val collectionTypeName = marshal.typename(f.ty).replaceFirst("ArrayList<(.*)>", "$1")
+                      w.wl(s"this.${field} = new ArrayList<>();") 
+                      w.wl(s"""JSONArray ${key} = (JSONArray) json.get("${key}");""") 
+                      w.w(s"for (int i = 0 ; i < ${key}.length() ; ++i)").braced{
+                        f.ty.resolved.args.head.base match {
+                          case df: MDef => df.defType match {
+                            case DRecord => {
+                              var recordType = idJava.ty(df.name);
+                              w.wl(s"this.${field}.add(new ${recordType}((JSONObject) ${key}.get(i)));")
+                            }
+                            case _ => throw new AssertionError("Unreachable")
+                          }
+                          // case MString => w.wl(s"this.${field}.add((String)${key}.get(i));")
+                          case _ => w.wl(s"this.${field}.add((${collectionTypeName}) ${key}.get(i));")
+                        }
+                      }
+                    }
+                    w.wl(s"} else {").nested{
+                      w.wl(s"this.${field} = null;")
+                    }
+                    w.wl(s"}")
+                  }
+                  case t: MPrimitive => t.jName match {
+                    case "byte" | "short" | "int" => w.wl(s"""this.${field} = json.getInt("${key}");""")
+                    case "long" => w.wl(s"""this.${field} = json.getLong("${key}");""")
+                    case "float" |  "double" => w.wl(s"""this.${field} = json.getDouble("${key}");""")
+                    case "boolean" => w.wl(s"""this.${field} = json.getBoolean("${key}");""")
+                    case _ => throw new AssertionError("Unreachable")
+                  }
+                  case MString => w.wl(s"""this.${field} = json.getString("${key}");""")
+                  case MObject => throw new AssertionError("Unreachable")
+                  case df: MDef => df.defType match {
+                    case DRecord => {
+                      w.wl(s"""if (json.has("${key}")) {""").nested{
+                        var recordType = idJava.ty(df.name);
+                        w.wl(s"""this.${field} = new ${recordType}((JSONObject) json.get("${key}"));""")
+                      }
+                      w.wl(s"} else ").nested{
+                        w.wl(s"this.${field} = null;")
+                      }
+                    }
+                    case DEnum => w.wl(s"""this.${field} = json.getInt("${key}");""")
+                    case _ => throw new AssertionError("Unreachable")
+                  }
+                  case _ => throw new AssertionError("Unreachable")
+                }
+            }
+          }
+        }
+
         // Accessors
         for (f <- r.fields) {
           w.wl
@@ -351,7 +453,7 @@ class JavaGenerator(spec: Spec) extends Generator(spec) {
                 skipFirst { w.wl(" &&") }
                 f.ty.resolved.base match {
                   case MBinary => w.w(s"java.util.Arrays.equals(${idJava.field(f.ident)}, other.${idJava.field(f.ident)})")
-                  case MList | MSet | MMap | MString | MDate => w.w(s"this.${idJava.field(f.ident)}.equals(other.${idJava.field(f.ident)})")
+                  case MList | MSet | MMap | MString | MObject | MDate => w.w(s"this.${idJava.field(f.ident)}.equals(other.${idJava.field(f.ident)})")
                   case MOptional =>
                     w.w(s"((this.${idJava.field(f.ident)} == null && other.${idJava.field(f.ident)} == null) || ")
                     w.w(s"(this.${idJava.field(f.ident)} != null && this.${idJava.field(f.ident)}.equals(other.${idJava.field(f.ident)})))")
@@ -390,7 +492,7 @@ class JavaGenerator(spec: Spec) extends Generator(spec) {
             for (f <- r.fields) {
               val fieldHashCode = f.ty.resolved.base match {
                 case MBinary => s"java.util.Arrays.hashCode(${idJava.field(f.ident)})"
-                case MList | MSet | MMap | MString | MDate => s"${idJava.field(f.ident)}.hashCode()"
+                case MList | MSet | MMap | MString | MObject | MDate => s"${idJava.field(f.ident)}.hashCode()"
                 // Need to repeat this case for MDef
                 case df: MDef => s"${idJava.field(f.ident)}.hashCode()"
                 case MOptional => s"(${idJava.field(f.ident)} == null ? 0 : ${idJava.field(f.ident)}.hashCode())"
@@ -414,6 +516,51 @@ class JavaGenerator(spec: Spec) extends Generator(spec) {
             w.wl(s"return hashCode;")
           }
 
+        }
+
+        w.wl
+        if (r.derivingTypes.contains(DerivingType.Json)) {
+
+          w.w("public JSONObject toJson() throws JSONException").braced {
+            w.wl(s"JSONObject root = new JSONObject();")
+            for (f <- r.fields) {
+              var key = idJava.local(f.ident);
+              var field = idJava.field(f.ident);
+              
+              f.ty.resolved.base match {
+                  case MList => w.w(s"if (this.${field} != null)").braced{
+                    w.wl(s"JSONArray ${key} = new JSONArray();") 
+                    w.w(s"for (Object o : this.${field})").braced{
+                      f.ty.resolved.args.head.base match {
+                        case df: MDef => df.defType match {
+                          case DRecord => {
+                            var recordType = idJava.ty(df.name);
+                            w.wl(s"${key}.put((($recordType)o).toJson());")
+                          }
+                          case _ => throw new AssertionError("Unreachable")
+                        }
+                        case _ => w.wl(s"${key}.put(o);")
+                      }
+                    }
+                    w.wl(s"""root.put("${key}", ${key});""")
+                  }
+                  case t: MPrimitive => w.wl(s"""root.put("${key}", this.${field});""")
+                  case MString => w.w(s"if (this.${field} != null)").braced{
+                    w.wl(s"""root.put("${key}", this.${field});""")
+                  }
+                  case MObject => throw new AssertionError("Unreachable")
+                  case df: MDef => df.defType match {
+                    case DRecord => w.w(s"if (this.${field} != null)").braced{
+                      w.wl(s"""root.put("${key}", this.${field}.toJson());""")
+                    }
+                    case DEnum => w.wl(s"""root.put("${key}", this.${field});""")
+                    case _ => throw new AssertionError("Unreachable")
+                  }
+                  case _ => throw new AssertionError("Unreachable")
+                }
+            }
+            w.wl(s"return root;")
+          }
         }
 
         w.wl
@@ -455,6 +602,7 @@ class JavaGenerator(spec: Spec) extends Generator(spec) {
             for (f <- r.fields) {
               f.ty.resolved.base match {
                 case MString | MDate => w.wl(s"tempResult = this.${idJava.field(f.ident)}.compareTo(other.${idJava.field(f.ident)});")
+                case MObject => throw new AssertionError("Unreachable")
                 case t: MPrimitive => primitiveCompare(f.ident)
                 case df: MDef => df.defType match {
                   case DRecord => w.wl(s"tempResult = this.${idJava.field(f.ident)}.compareTo(other.${idJava.field(f.ident)});")
@@ -505,6 +653,7 @@ class JavaGenerator(spec: Spec) extends Generator(spec) {
     def deserializeField(f: Field, m: Meta, inOptional: Boolean) {
       m match {
         case MString => w.wl(s"this.${idJava.field(f.ident)} = in.readString();")
+        case MObject => throw new AssertionError("Unreachable")
         case MBinary => {
           w.wl(s"this.${idJava.field(f.ident)} = in.createByteArray();")
         }
@@ -586,6 +735,7 @@ class JavaGenerator(spec: Spec) extends Generator(spec) {
     def serializeField(f: Field, m: Meta, inOptional: Boolean) {
       m match {
         case MString => w.wl(s"out.writeString(this.${idJava.field(f.ident)});")
+        case MObject => throw new AssertionError("Unreachable")
         case MBinary => {
           w.wl(s"out.writeByteArray(this.${idJava.field(f.ident)});")
         }

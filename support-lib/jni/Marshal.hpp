@@ -197,6 +197,29 @@ namespace djinni
         }
     };
 
+    struct Object
+    {
+        using CppType = void*;
+        using JniType = jobject;
+
+        using Boxed = Object;
+
+        static CppType toCpp(JNIEnv* jniEnv, JniType j)
+        {
+            assert(j != nullptr);
+            // GlobalRef<JniType>* p_global_object = new GlobalRef<JniType>(jniEnv, j);
+            // return reinterpret_cast<void*>(p_global_object);
+            return &j;
+        }
+
+        static LocalRef<JniType> fromCpp(JNIEnv* jniEnv, const CppType c)
+        {
+            // GlobalRef<JniType>* p_global_object = reinterpret_cast<GlobalRef<JniType>*>(c);
+            // return {jniEnv, p_global_object->get()};
+            return {jniEnv, *reinterpret_cast<jobject*>(c)};
+        }
+    };
+
     struct Binary
     {
         using CppType = std::vector<uint8_t>;
