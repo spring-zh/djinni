@@ -184,12 +184,12 @@ struct Object {
 
     static CppType toCpp(ObjcType obj) {
         assert(obj);
-        return (__bridge_retained void *)obj;
+        return (__bridge void *)obj;
     }
 
     static ObjcType fromCpp(const CppType p) {
         assert(p);
-        return (__bridge_transfer id)p;
+        return (__bridge id)p;
     }
 };
 

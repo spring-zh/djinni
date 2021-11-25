@@ -219,6 +219,7 @@ class CppMarshal(spec: Spec) extends Marshal(spec) {
       case DEnum => true
       case DRecord => e.cpp.byValue
     }
+    case MObject => true
     case MOptional => byValue(tm.args.head)
     case _ => false
   }
