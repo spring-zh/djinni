@@ -256,7 +256,7 @@ jfieldID jniGetFieldID(jclass clazz, const char * name, const char * sig) {
 JniEnum::JniEnum(const std::string & name)
     : m_clazz { jniFindClass(name.c_str()) },
       m_staticmethValues { jniGetStaticMethodID(m_clazz.get(), "values", ("()[L" + name + ";").c_str()) },
-      m_staticmethIndex { jniGetStaticMethodID(m_clazz.get(), "index", ("()L" + name + ";").c_str()) },
+      m_staticmethIndex { jniGetStaticMethodID(m_clazz.get(), "index", ("(I)L" + name + ";").c_str()) },
       m_methOrdinal { jniGetMethodID(m_clazz.get(), "ordinal", "()I") },
       m_methGetValue { jniGetMethodID(m_clazz.get(), "getValue", "()I") }
     {}
@@ -284,7 +284,7 @@ LocalRef<jobject> JniEnum::create(JNIEnv * env, jint value) const {
     //                                                     value));
     LocalRef<jobject> result(env, env->CallStaticObjectMethod(m_clazz.get(), m_staticmethIndex, value));
     jniExceptionCheck(env);
-    DJINNI_ASSERT(values, env);
+    DJINNI_ASSERT(result, env);
     return result;
 }
 

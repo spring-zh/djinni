@@ -207,16 +207,19 @@ namespace djinni
         static CppType toCpp(JNIEnv* jniEnv, JniType j)
         {
             assert(j != nullptr);
-            // GlobalRef<JniType>* p_global_object = new GlobalRef<JniType>(jniEnv, j);
-            // return reinterpret_cast<void*>(p_global_object);
-            return &j;
+#ifdef USE_PUSHLOCALFRAME
+            // call PushLocalFrame retain local reference. we must call PopLocalFrame when release
+//          jniEnv->PushLocalFrame(1);
+//          return reinterpret_cast<CppType>(j);
+#else
+            // we must call DeleteGlobalRef when release
+            return reinterpret_cast<CppType>(jniEnv->NewGlobalRef(j));
+#endif
         }
 
         static LocalRef<JniType> fromCpp(JNIEnv* jniEnv, const CppType c)
         {
-            // GlobalRef<JniType>* p_global_object = reinterpret_cast<GlobalRef<JniType>*>(c);
-            // return {jniEnv, p_global_object->get()};
-            return {jniEnv, *reinterpret_cast<jobject*>(c)};
+            return {jniEnv, reinterpret_cast<JniType>(c)};
         }
     };
 

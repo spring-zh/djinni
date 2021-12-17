@@ -114,6 +114,11 @@ class JavaGenerator(spec: Spec) extends Generator(spec) {
     writeJavaFile(ident, origin, refs.java, w => {
       writeDoc(w, doc)
       javaAnnotationHeader.foreach(w.wl)
+
+      w.wl("import java.util.Arrays;")
+      w.wl("import java.util.Comparator;")
+      w.wl
+      
       w.w(s"${javaClassAccessModifierString}enum ${marshal.typename(ident, e)}").braced {
         if(e.flags) {
           for (o <- normalEnumOptions(e)) {
@@ -132,22 +137,23 @@ class JavaGenerator(spec: Spec) extends Generator(spec) {
             w.wl(idJava.enum(o.ident) + s"($index),")
           }
           w.wl(";")
-          
           w.wl
+          w.wl("// ---  switch between java enum and int  --- ")
+          w.wl("// ---  --------------------------------  --- ")
+
           w.wl("private final int value;")
 
+          var enum_cls = marshal.typename(ident, e)
           w.wl
-          w.w(s"${marshal.typename(ident, e)}(int value)").braced {
+          w.w(s"${enum_cls}(int value)").braced {
             w.wl("this.value = value;")
           }
           w.wl
-          w.w(s"static ${marshal.typename(ident, e)} index(int value)").braced {
-            w.w(s"for (${marshal.typename(ident, e)} item : Enumcls.values())").braced {
-              w.wl("if (item.value == value)").nested {
-                w.wl("return item;")
-              }
+          w.w(s"static ${enum_cls} index(int value)").braced {
+            w.wl(s"int index = Arrays.binarySearch(${enum_cls}.values(), value, ").nested {
+              w.wl(s"(Comparator<Object>) (o, t1) -> ((${enum_cls})o).value - (Integer) t1);")
             }
-            w.wl("return null;")
+            w.wl(s"return index >= 0 ? ${enum_cls}.values()[index] : null;")
           }
 
           w.w("int getValue()").braced {
