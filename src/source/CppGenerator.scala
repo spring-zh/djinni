@@ -127,7 +127,7 @@ class CppGenerator(spec: Spec) extends Generator(spec) {
       // set value in header if can constexpr (only primitives)
       var constexpr = shouldConstexpr(c)
       var constValue = ";"
-      // if (constexpr) {
+      if (constexpr) {
         constValue = c.value match {
         case l: Long => " = " + l.toString + ";"
         case d: Double if marshal.fieldType(c.ty) == "float" => " = " + d.toString + "f;"
@@ -135,7 +135,7 @@ class CppGenerator(spec: Spec) extends Generator(spec) {
         case b: Boolean => if (b) " = true;" else " = false;"
         case _ => ";"
         }
-      // }
+      }
       val constFieldType = if (constexpr) s"constexpr ${marshal.fieldType(c.ty)}" else s"const ${marshal.fieldType(c.ty)}"
 
       // Write code to the header file
@@ -219,51 +219,24 @@ class CppGenerator(spec: Spec) extends Generator(spec) {
 
         if (r.derivingTypes.contains(DerivingType.Eq)) {
           w.wl
-          w.w(s"bool operator==(const $actualSelf& rhs)").braced {
-            if(!r.fields.isEmpty) {
-              writeAlignedCall(w, "return ", r.fields, " &&", "", f => s"${idCpp.field(f.ident)} == rhs.${idCpp.field(f.ident)}")
-              w.wl(";")
-            } else {
-             w.wl("return true;")
-           }
-          }
-          w.wl
-          w.w(s"bool operator!=(const $actualSelf& rhs)").braced {
-            w.wl("return !((*this) == rhs);")
-          }
+          w.wl(s"friend bool operator==(const $actualSelf& lhs, const $actualSelf& rhs);")
+          w.wl(s"friend bool operator!=(const $actualSelf& lhs, const $actualSelf& rhs);")
         }
         if (r.derivingTypes.contains(DerivingType.Ord)) {
           w.wl
-          w.w(s"bool operator<(const $actualSelf& rhs)").braced {
-            for(f <- r.fields) {
-              w.w(s"if (${idCpp.field(f.ident)} < rhs.${idCpp.field(f.ident)})").braced {
-                w.wl("return true;")
-              }
-              w.w(s"if (rhs.${idCpp.field(f.ident)} < ${idCpp.field(f.ident)})").braced {
-                w.wl("return false;")
-              }
-            }
-            w.wl("return false;")
-          }
-          w.wl
-          w.w(s"bool operator>(const $actualSelf& rhs)").braced {
-            w.wl("return rhs < (*this);")
-          }
+          w.wl(s"friend bool operator<(const $actualSelf& lhs, const $actualSelf& rhs);")
+          w.wl(s"friend bool operator>(const $actualSelf& lhs, const $actualSelf& rhs);")
         }
         if (r.derivingTypes.contains(DerivingType.Eq) && r.derivingTypes.contains(DerivingType.Ord)) {
           w.wl
-          w.w(s"bool operator<=(const $actualSelf& rhs)").braced {
-            w.wl("return !(rhs < (*this));")
-          }
-          w.wl
-          w.w(s"bool operator>=(const $actualSelf& rhs)").braced {
-            w.wl("return !((*this) < rhs);")
-          }
+          w.wl(s"friend bool operator<=(const $actualSelf& lhs, const $actualSelf& rhs);")
+          w.wl(s"friend bool operator>=(const $actualSelf& lhs, const $actualSelf& rhs);")
         }
 
         // Constructor.
         w.wl
         w.wl(s"$actualSelf() {}")
+        
         if(r.fields.nonEmpty) {
           w.wl
           writeAlignedCall(w, actualSelf + "(", r.fields, ")", f => marshal.fieldType(f.ty) + " " + idCpp.local(f.ident) + "_")
@@ -290,6 +263,56 @@ class CppGenerator(spec: Spec) extends Generator(spec) {
     }
 
     writeHppFile(cppName, origin, refs.hpp, refs.hppFwds, writeCppPrototype)
+
+    if (r.consts.nonEmpty || r.derivingTypes.contains(DerivingType.Eq) || r.derivingTypes.contains(DerivingType.Ord)) {
+      writeCppFile(cppName, origin, refs.cpp, w => {
+        generateCppConstants(w, r.consts, actualSelf)
+
+        if (r.derivingTypes.contains(DerivingType.Eq)) {
+          w.wl
+          w.w(s"bool operator==(const $actualSelf& lhs, const $actualSelf& rhs)").braced {
+            if(!r.fields.isEmpty) {
+              writeAlignedCall(w, "return ", r.fields, " &&", "", f => s"lhs.${idCpp.field(f.ident)} == rhs.${idCpp.field(f.ident)}")
+              w.wl(";")
+            } else {
+             w.wl("return true;")
+           }
+          }
+          w.wl
+          w.w(s"bool operator!=(const $actualSelf& lhs, const $actualSelf& rhs)").braced {
+            w.wl("return !(lhs == rhs);")
+          }
+        }
+        if (r.derivingTypes.contains(DerivingType.Ord)) {
+          w.wl
+          w.w(s"bool operator<(const $actualSelf& lhs, const $actualSelf& rhs)").braced {
+            for(f <- r.fields) {
+              w.w(s"if (lhs.${idCpp.field(f.ident)} < rhs.${idCpp.field(f.ident)})").braced {
+                w.wl("return true;")
+              }
+              w.w(s"if (rhs.${idCpp.field(f.ident)} < lhs.${idCpp.field(f.ident)})").braced {
+                w.wl("return false;")
+              }
+            }
+            w.wl("return false;")
+          }
+          w.wl
+          w.w(s"bool operator>(const $actualSelf& lhs, const $actualSelf& rhs)").braced {
+            w.wl("return rhs < lhs;")
+          }
+        }
+        if (r.derivingTypes.contains(DerivingType.Eq) && r.derivingTypes.contains(DerivingType.Ord)) {
+          w.wl
+          w.w(s"bool operator<=(const $actualSelf& lhs, const $actualSelf& rhs)").braced {
+            w.wl("return !(rhs < lhs);")
+          }
+          w.wl
+          w.w(s"bool operator>=(const $actualSelf& lhs, const $actualSelf& rhs)").braced {
+            w.wl("return !(lhs < rhs);")
+          }
+        }
+      })
+    }
 
   }
 
@@ -332,11 +355,11 @@ class CppGenerator(spec: Spec) extends Generator(spec) {
     })
 
     // Cpp only generated in need of Constants
-    // if (i.consts.nonEmpty) {
-    //   writeCppFile(ident, origin, refs.cpp, w => {
-    //     generateCppConstants(w, i.consts, self)
-    //   })
-    // }
+    if (i.consts.nonEmpty) {
+      writeCppFile(ident, origin, refs.cpp, w => {
+        generateCppConstants(w, i.consts, self)
+      })
+    }
 
   }
 
